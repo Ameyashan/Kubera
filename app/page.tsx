@@ -167,8 +167,8 @@ export default function HomePage() {
   const [view, setView] = useState<'upload' | 'dashboard'>('upload')
   const [uploadedFiles, setUploadedFiles] = useState<FileEntry[]>([])
   const [dashboardData, setDashboardData] = useState<DashboardPayload | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [loadingText, setLoadingText] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [loadingText, setLoadingText] = useState('Checking your account for existing data…')
   const [isDragOver, setIsDragOver] = useState(false)
   const [txState, setTxState] = useState({
     sortCol: 'date',
@@ -204,13 +204,25 @@ export default function HomePage() {
     ;(async () => {
       try {
         const res = await fetch('/api/dashboard')
-        const data = await res.json()
+        if (!res.ok) throw new Error('Failed to fetch dashboard')
+        let data = await res.json()
+
+        if (data.status === 'empty') {
+          setLoadingText('Building your dashboard…')
+          const rebuildRes = await fetch('/api/dashboard', { method: 'POST' })
+          if (!rebuildRes.ok) throw new Error('Failed to rebuild dashboard')
+          data = await rebuildRes.json()
+        }
+
         if (data.status !== 'empty' && data.transactions && data.transactions.length > 0) {
           setDashboardData(data)
           setView('dashboard')
         }
-      } catch {
-        // No existing data, stay on upload view
+      } catch (err) {
+        console.error('Dashboard check error:', err)
+      } finally {
+        setLoading(false)
+        setLoadingText('')
       }
     })()
   }, [])
@@ -912,6 +924,24 @@ export default function HomePage() {
             : f
         )
       )
+
+      // Auto-regenerate dashboard after successful upload so new data is reflected immediately
+      if (!data.error && (data.transactions_found || 0) > 0) {
+        setLoading(true)
+        setLoadingText('Updating your dashboard...')
+        try {
+          const dashRes = await fetch('/api/dashboard', { method: 'POST' })
+          const dashData = await dashRes.json()
+          if (dashData.status !== 'empty' && dashData.transactions) {
+            setDashboardData(dashData)
+            setView('dashboard')
+          }
+        } catch (dashErr) {
+          console.error('Auto-generate dashboard error:', dashErr)
+        } finally {
+          setLoading(false)
+        }
+      }
     } catch (err) {
       console.error('Upload error:', err)
       setUploadedFiles((prev) =>
@@ -1136,30 +1166,32 @@ export default function HomePage() {
 
       {/* Navbar */}
       <nav className="navbar">
-        <div className="nav-brand">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 32, height: 32 }}>
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" strokeLinecap="round" />
-            <path d="M12 6v6l4 2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          Personal CFO
-        </div>
-        <div className="nav-links" id="navLinks">
-          {view === 'dashboard' && (
-            <>
-              <button className="nav-back-btn" onClick={() => setView('upload')}>
-                ← Back to Upload
-              </button>
-              <a href="#heroSection">Overview</a>
-              <a href="#sectionMonthly">Cards</a>
-              {dashboardData?.savings && <a href="#sectionSavings">Savings</a>}
-              {dashboardData?.investments && <a href="#sectionInvestments">Investments</a>}
-              <a href="#sectionInsights">Insights</a>
-              <a href="#sectionTransactions">Transactions</a>
-            </>
-          )}
-          <button className="btn-signout" onClick={handleSignOut}>
-            Sign Out
-          </button>
+        <div className="nav-inner">
+          <div className="nav-brand">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 28, height: 28 }}>
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" strokeLinecap="round" />
+              <path d="M12 6v6l4 2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Personal CFO
+          </div>
+          <div className="nav-links" id="navLinks">
+            {view === 'dashboard' && (
+              <>
+                <button className="nav-back-btn" onClick={() => setView('upload')}>
+                  + Upload More Statements
+                </button>
+                <a href="#heroSection">Overview</a>
+                <a href="#sectionMonthly">Cards</a>
+                {dashboardData?.savings && <a href="#sectionSavings">Savings</a>}
+                {dashboardData?.investments && <a href="#sectionInvestments">Investments</a>}
+                <a href="#sectionInsights">Insights</a>
+                <a href="#sectionTransactions">Transactions</a>
+              </>
+            )}
+            <button className="btn-signout" onClick={handleSignOut}>
+              Sign Out
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -1170,8 +1202,21 @@ export default function HomePage() {
       >
         <div className="upload-container">
           <div className="upload-header">
-            <h1>Your Personal CFO</h1>
-            <p>Upload your bank &amp; credit card statements to get started</p>
+            <h1>{dashboardData ? 'Add More Statements' : 'Your Personal CFO'}</h1>
+            <p>
+              {dashboardData
+                ? 'Upload additional bank & credit card statements to enrich your dashboard'
+                : 'Upload your bank & credit card statements to get started'}
+            </p>
+            {dashboardData && (
+              <button
+                className="btn btn-secondary"
+                style={{ marginTop: 12 }}
+                onClick={() => setView('dashboard')}
+              >
+                ← Back to Dashboard
+              </button>
+            )}
           </div>
 
           <div
@@ -1403,11 +1448,14 @@ export default function HomePage() {
               </div>
               {dashboardData.interest.total > 0 && (
                 <div className="interest-callout" id="interestCallout">
-                  <strong>⚠️ Opportunity Cost of Interest</strong>{' '}
-                  You&apos;ve paid ${dashboardData.interest.total.toLocaleString(undefined, { minimumFractionDigits: 2 })} in interest charges.{' '}
-                  If invested at 7% annual return, this could have grown by ~$
-                  {(dashboardData.interest.total * 0.07).toFixed(2)} in a year.{' '}
-                  Consider balance transfer offers or accelerated payoff strategies.
+                  <span className="callout-icon">⚠️</span>
+                  <span>
+                    <strong>Opportunity Cost of Interest</strong>{' '}
+                    You&apos;ve paid ${dashboardData.interest.total.toLocaleString(undefined, { minimumFractionDigits: 2 })} in interest charges.{' '}
+                    If invested at 7% annual return, this could have grown by ~$
+                    {(dashboardData.interest.total * 0.07).toFixed(2)} in a year.{' '}
+                    Consider balance transfer offers or accelerated payoff strategies.
+                  </span>
                 </div>
               )}
             </section>
@@ -1544,11 +1592,11 @@ export default function HomePage() {
                     key={idx}
                     style={{ '--tip-color': tip.color } as React.CSSProperties}
                   >
-                    <div className="tip-emoji">{tip.emoji}</div>
-                    <div className="tip-content">
+                    <div className="tip-header">
+                      <span className="tip-emoji">{tip.emoji}</span>
                       <div className="tip-title">{tip.title}</div>
-                      <div className="tip-text">{tip.text}</div>
                     </div>
+                    <div className="tip-text">{tip.text}</div>
                   </div>
                 ))}
               </div>
@@ -1753,45 +1801,43 @@ export default function HomePage() {
 
               {/* Pagination */}
               <div className="tx-pagination" id="txPagination">
-                <span className="page-info">
-                  Showing {filteredTxns.length > 0 ? txStart + 1 : 0}–
+                <button
+                  className="page-btn"
+                  disabled={currentPage <= 1}
+                  onClick={() => changeTxPage(currentPage - 1)}
+                >
+                  ←
+                </button>
+                {paginationPages.map((p, i) =>
+                  p === '...' ? (
+                    <span
+                      key={`ellipsis-${i}`}
+                      style={{ padding: '6px 4px', color: 'var(--text-muted)' }}
+                    >
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={p}
+                      className={`page-btn ${p === currentPage ? 'active' : ''}`}
+                      onClick={() => changeTxPage(p as number)}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+                <button
+                  className="page-btn"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => changeTxPage(currentPage + 1)}
+                >
+                  →
+                </button>
+                <span className="page-info" style={{ minWidth: 120, textAlign: 'center' }}>
+                  {filteredTxns.length > 0 ? txStart + 1 : 0}–
                   {Math.min(txStart + txState.perPage, filteredTxns.length)} of{' '}
                   {filteredTxns.length}
                 </span>
-                <div className="page-buttons">
-                  <button
-                    className="page-btn"
-                    disabled={currentPage <= 1}
-                    onClick={() => changeTxPage(currentPage - 1)}
-                  >
-                    ←
-                  </button>
-                  {paginationPages.map((p, i) =>
-                    p === '...' ? (
-                      <span
-                        key={`ellipsis-${i}`}
-                        style={{ padding: '6px 4px', color: 'var(--text-muted)' }}
-                      >
-                        …
-                      </span>
-                    ) : (
-                      <button
-                        key={p}
-                        className={`page-btn ${p === currentPage ? 'active' : ''}`}
-                        onClick={() => changeTxPage(p as number)}
-                      >
-                        {p}
-                      </button>
-                    )
-                  )}
-                  <button
-                    className="page-btn"
-                    disabled={currentPage >= totalPages}
-                    onClick={() => changeTxPage(currentPage + 1)}
-                  >
-                    →
-                  </button>
-                </div>
               </div>
             </section>
           </>
