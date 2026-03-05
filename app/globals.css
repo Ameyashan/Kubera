@@ -423,8 +423,6 @@ a:hover { text-decoration: underline; }
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 1.25rem;
-  max-width: 1400px;
-  margin: 0 auto;
   margin-bottom: 1rem;
 }
 
@@ -1224,7 +1222,11 @@ a:hover { text-decoration: underline; }
 .hero-content {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 0 2rem;
+  padding: 0 2rem 0;
+}
+
+.hero-content .kpi-grid {
+  padding: 0;
 }
 
 .insights-section,

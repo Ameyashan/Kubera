@@ -363,6 +363,7 @@ export default function HomePage() {
           responsive: true,
           maintainAspectRatio: true,
           aspectRatio: 1,
+          interaction: { mode: 'index', intersect: false },
           plugins: {
             legend: { display: false },
             tooltip: {
@@ -540,6 +541,7 @@ export default function HomePage() {
         responsive: true,
         maintainAspectRatio: true,
         aspectRatio: 1.5,
+        interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -716,6 +718,7 @@ export default function HomePage() {
         responsive: true,
         maintainAspectRatio: true,
         aspectRatio: 2.5,
+        interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -1339,7 +1342,6 @@ export default function HomePage() {
                   {formatMonth(dashboardData.summary.date_range.start)} —{' '}
                   {formatMonth(dashboardData.summary.date_range.end)}
                 </p>
-              </div>
               <div className="kpi-grid" id="kpiGrid">
                 {/* Total Spend */}
                 <div className="kpi-card">
@@ -1386,7 +1388,11 @@ export default function HomePage() {
                   </div>
                 </div>
               </div>
+              </div> {/* end .hero-content */}
             </section>
+
+            {/* ── Centered content container ── */}
+            <div className="dashboard-content">
 
             {/* Monthly Spending Trends (Credit Cards) */}
             <section className="chart-section" id="sectionMonthly">
@@ -1840,6 +1846,8 @@ export default function HomePage() {
                 </span>
               </div>
             </section>
+
+            </div> {/* end .dashboard-content */}
           </>
         )}
       </div>

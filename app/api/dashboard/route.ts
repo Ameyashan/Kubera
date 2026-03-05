@@ -26,17 +26,33 @@ export async function POST() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Fetch all transactions for this user
-  const { data: rows, error } = await supabase
-    .from('transactions')
-    .select('*')
-    .eq('user_id', user.id)
-    .order('date', { ascending: true })
+  // Fetch all transactions for this user (paginate to avoid Supabase's default 1000-row limit)
+  const PAGE_SIZE = 1000
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let allRows: any[] = []
+  let from = 0
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!rows || rows.length === 0) {
+  while (true) {
+    const { data: rows, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('date', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (!rows || rows.length === 0) break
+
+    allRows = allRows.concat(rows)
+    if (rows.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+
+  if (allRows.length === 0) {
     return NextResponse.json({ status: 'empty', message: 'No transactions found.' })
   }
+
+  const rows = allRows
 
   const transactions: Transaction[] = rows.map(r => ({
     id: r.id,
