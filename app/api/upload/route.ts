@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { parseCsv, parsePdfText } from '@/lib/finance/parsers'
+import { parsePdfWithLLM } from '@/lib/finance/llm-parser'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -17,16 +18,26 @@ export async function POST(request: Request) {
       const text = buffer.toString('utf-8')
       transactions = parseCsv(text, filename)
     } else {
-      // PDF parsing
+      // PDF parsing — extract text then send to LLM
+      let pdfText = ''
+
       try {
         const pdf = (await import('pdf-parse/lib/pdf-parse')).default
         const pdfData = await pdf(buffer)
-        transactions = parsePdfText(pdfData.text, filename)
-      } catch (pdfErr) {
-        // Fallback: try raw text extraction
-        const text = buffer.toString('latin1')
-        const chunks = text.match(/\(([^)]+)\)/g)?.map(s => s.slice(1, -1)) || []
-        transactions = parsePdfText(chunks.join('\n'), filename)
+        pdfText = pdfData.text
+      } catch {
+        const raw = buffer.toString('latin1')
+        const chunks = raw.match(/\(([^)]+)\)/g)?.map(s => s.slice(1, -1)) || []
+        pdfText = chunks.join('\n')
+      }
+
+      if (pdfText.trim()) {
+        try {
+          transactions = await parsePdfWithLLM(pdfText, filename)
+        } catch (llmErr: any) {
+          console.error('LLM parsing failed, falling back to regex:', llmErr.message)
+          transactions = parsePdfText(pdfText, filename)
+        }
       }
     }
 
