@@ -45,6 +45,7 @@ export async function POST() {
     amount: Number(r.amount),
     card: r.card || 'Unknown',
     category: r.category || 'Other',
+    account_type: r.account_type || 'credit_card',
   }))
 
   const payload = buildDashboardPayload(transactions)

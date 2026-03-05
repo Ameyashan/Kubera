@@ -12,9 +12,14 @@ create table if not exists public.transactions (
   amount numeric(12,2) not null,
   card text default 'Unknown',
   category text default 'Other',
+  account_type text not null default 'credit_card',
   source_file text,
   created_at timestamptz default now()
 );
+
+-- Migration: add account_type to existing tables
+-- Run this if the table already exists:
+-- alter table public.transactions add column if not exists account_type text not null default 'credit_card';
 
 -- 2. Dashboard cache (pre-computed aggregates)
 create table if not exists public.dashboard_cache (
@@ -46,3 +51,6 @@ create index if not exists idx_transactions_user_date
 
 create index if not exists idx_transactions_user_category 
   on public.transactions(user_id, category);
+
+create index if not exists idx_transactions_user_account_type
+  on public.transactions(user_id, account_type);

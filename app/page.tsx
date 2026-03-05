@@ -28,6 +28,8 @@ const ACCENT_COLORS = [
 ]
 
 // ---- Types ----
+type AccountType = 'credit_card' | 'savings' | 'investment'
+
 interface FileEntry {
   id: number
   name: string
@@ -35,10 +37,37 @@ interface FileEntry {
   status: 'uploading' | 'parsing' | 'ready' | 'error'
   file: File
   txCount: number
+  accountType: AccountType
+}
+
+interface SavingsSummary {
+  accounts: string[]
+  total_deposits: number
+  total_withdrawals: number
+  net_cash_flow: number
+  interest_earned: number
+  monthly: {
+    months: string[]
+    deposits: Record<string, number>
+    withdrawals: Record<string, number>
+  }
+  balance: Record<string, Record<string, number>>
+}
+
+interface InvestmentSummary {
+  accounts: string[]
+  total_contributions: number
+  total_dividends: number
+  monthly: {
+    months: string[]
+    contributions: Record<string, number>
+    dividends: Record<string, number>
+  }
 }
 
 interface DashboardPayload {
   status: string
+  account_types: string[]
   summary: {
     total_spend: number
     total_income: number
@@ -72,7 +101,25 @@ interface DashboardPayload {
     amount: number
     card: string
     category: string
+    account_type: AccountType
   }>
+  savings: SavingsSummary | null
+  investments: InvestmentSummary | null
+}
+
+function detectAccountTypeFromFilename(filename: string): AccountType {
+  const lower = filename.toLowerCase()
+  const investmentKeywords = ['fidelity', 'vanguard', 'schwab', 'etrade', 'e-trade', 'robinhood', 'wealthfront', 'betterment', 'investment', 'brokerage', '401k', 'ira', 'roth', 'portfolio', 'stock', 'fund']
+  const savingsKeywords = ['savings', 'checking', 'money market']
+  if (investmentKeywords.some((k) => lower.includes(k))) return 'investment'
+  if (savingsKeywords.some((k) => lower.includes(k))) return 'savings'
+  return 'credit_card'
+}
+
+const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
+  credit_card: '💳 Credit Card',
+  savings: '🏦 Savings / Checking',
+  investment: '📈 Investment',
 }
 
 // ---- Helpers ----
@@ -130,6 +177,7 @@ export default function HomePage() {
     cardFilter: '',
     categoryFilter: '',
     monthFilter: '',
+    accountTypeFilter: '',
     page: 1,
     perPage: 50,
   })
@@ -144,6 +192,9 @@ export default function HomePage() {
     chartInterest: useRef<HTMLCanvasElement>(null),
     chartBalance: useRef<HTMLCanvasElement>(null),
     chartDow: useRef<HTMLCanvasElement>(null),
+    chartSavingsMonthly: useRef<HTMLCanvasElement>(null),
+    chartSavingsBalance: useRef<HTMLCanvasElement>(null),
+    chartInvestmentsMonthly: useRef<HTMLCanvasElement>(null),
   }
   const chartInstances = useRef<Record<string, Chart>>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -197,6 +248,8 @@ export default function HomePage() {
     renderInterestChart(d)
     renderBalanceChart(d)
     renderDowChart(d)
+    if (d.savings) renderSavingsCharts(d.savings)
+    if (d.investments) renderInvestmentsChart(d.investments)
   }
 
   // ---- Monthly Chart ----
@@ -678,6 +731,147 @@ export default function HomePage() {
     })
   }
 
+  // ---- Savings Charts ----
+  function renderSavingsCharts(s: SavingsSummary) {
+    const months = s.monthly.months
+    const labels = months.map(formatMonthShort)
+
+    // Monthly deposits vs withdrawals
+    const monthlyCanvas = chartRefs.chartSavingsMonthly.current
+    if (monthlyCanvas) {
+      destroyChart('chartSavingsMonthly')
+      chartInstances.current.chartSavingsMonthly = new Chart(monthlyCanvas, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Deposits',
+              data: months.map((m) => s.monthly.deposits[m] || 0),
+              backgroundColor: '#34d39999',
+              borderColor: '#34d399',
+              borderWidth: 1,
+              borderRadius: 4,
+            },
+            {
+              label: 'Withdrawals',
+              data: months.map((m) => s.monthly.withdrawals[m] || 0),
+              backgroundColor: '#ef444499',
+              borderColor: '#ef4444',
+              borderWidth: 1,
+              borderRadius: 4,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          aspectRatio: 2.5,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            tooltip: { ...TOOLTIP_STYLE, callbacks: { label: (ctx) => `${ctx.dataset.label}: $${(ctx.parsed.y as number).toLocaleString(undefined, { minimumFractionDigits: 2 })}` } },
+            legend: { position: 'top', labels: { boxWidth: 12, padding: 16 } },
+          },
+          scales: {
+            x: { grid: { display: false } },
+            y: { grid: { color: 'rgba(42,45,62,0.5)' }, ticks: { callback: (v) => '$' + (Number(v) >= 1000 ? (Number(v) / 1000).toFixed(1) + 'k' : v) } },
+          },
+        },
+      })
+    }
+
+    // Cumulative balance per savings account
+    const balanceCanvas = chartRefs.chartSavingsBalance.current
+    if (balanceCanvas) {
+      destroyChart('chartSavingsBalance')
+      const savingsColors = ['#34d399', '#2dd4bf', '#22d3ee', '#a78bfa']
+      const datasets = s.accounts.map((acct, i) => {
+        let cum = 0
+        const data = months.map((m) => {
+          cum += s.balance[acct]?.[m] || 0
+          return Math.round(cum * 100) / 100
+        })
+        return {
+          label: acct,
+          data,
+          borderColor: savingsColors[i % savingsColors.length],
+          backgroundColor: savingsColors[i % savingsColors.length] + '15',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+        }
+      })
+      chartInstances.current.chartSavingsBalance = new Chart(balanceCanvas, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          aspectRatio: 2.5,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            tooltip: { ...TOOLTIP_STYLE, callbacks: { label: (ctx) => `${ctx.dataset.label}: $${(ctx.parsed.y as number).toLocaleString(undefined, { minimumFractionDigits: 2 })}` } },
+            legend: { position: 'top', labels: { boxWidth: 12, padding: 16 } },
+          },
+          scales: {
+            x: { grid: { display: false } },
+            y: { grid: { color: 'rgba(42,45,62,0.5)' }, ticks: { callback: (v) => '$' + (Math.abs(Number(v)) >= 1000 ? (Number(v) / 1000).toFixed(1) + 'k' : v) } },
+          },
+        },
+      })
+    }
+  }
+
+  // ---- Investments Chart ----
+  function renderInvestmentsChart(inv: InvestmentSummary) {
+    const months = inv.monthly.months
+    const labels = months.map(formatMonthShort)
+    const canvas = chartRefs.chartInvestmentsMonthly.current
+    if (!canvas) return
+    destroyChart('chartInvestmentsMonthly')
+
+    chartInstances.current.chartInvestmentsMonthly = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Contributions / Purchases',
+            data: months.map((m) => inv.monthly.contributions[m] || 0),
+            backgroundColor: '#f59e0b99',
+            borderColor: '#f59e0b',
+            borderWidth: 1,
+            borderRadius: 4,
+          },
+          {
+            label: 'Dividends / Distributions',
+            data: months.map((m) => inv.monthly.dividends[m] || 0),
+            backgroundColor: '#4f8ff799',
+            borderColor: '#4f8ff7',
+            borderWidth: 1,
+            borderRadius: 4,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        aspectRatio: 2.5,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          tooltip: { ...TOOLTIP_STYLE, callbacks: { label: (ctx) => `${ctx.dataset.label}: $${(ctx.parsed.y as number).toLocaleString(undefined, { minimumFractionDigits: 2 })}` } },
+          legend: { position: 'top', labels: { boxWidth: 12, padding: 16 } },
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: { grid: { color: 'rgba(42,45,62,0.5)' }, ticks: { callback: (v) => '$' + (Number(v) >= 1000 ? (Number(v) / 1000).toFixed(1) + 'k' : v) } },
+        },
+      },
+    })
+  }
+
   // ---- File Handling ----
   function readFileAsBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -691,7 +885,7 @@ export default function HomePage() {
     })
   }
 
-  async function uploadFile(fileObj: FileEntry) {
+  async function uploadFile(fileObj: FileEntry, replace = false) {
     try {
       const base64 = await readFileAsBase64(fileObj.file)
       setUploadedFiles((prev) =>
@@ -705,6 +899,8 @@ export default function HomePage() {
           filename: fileObj.name,
           filetype: fileObj.type,
           content: base64,
+          accountType: fileObj.accountType,
+          replace,
         }),
       })
 
@@ -739,9 +935,23 @@ export default function HomePage() {
         status: 'uploading',
         file,
         txCount: 0,
+        accountType: detectAccountTypeFromFilename(file.name),
       }
       setUploadedFiles((prev) => [...prev, fileObj])
       uploadFile(fileObj)
+    }
+  }
+
+  async function handleAccountTypeChange(fileId: number, newType: AccountType) {
+    setUploadedFiles((prev) =>
+      prev.map((f) => (f.id === fileId ? { ...f, accountType: newType } : f))
+    )
+    const fileObj = uploadedFiles.find((f) => f.id === fileId)
+    if (fileObj && fileObj.status === 'ready') {
+      setUploadedFiles((prev) =>
+        prev.map((f) => (f.id === fileId ? { ...f, accountType: newType, status: 'uploading' } : f))
+      )
+      await uploadFile({ ...fileObj, accountType: newType }, true)
     }
   }
 
@@ -809,7 +1019,7 @@ export default function HomePage() {
   // ---- Transaction Table Computed Data ----
   const allTxns = useMemo(() => {
     if (!dashboardData) return []
-    return dashboardData.transactions.filter((t) => t.amount < 0)
+    return dashboardData.transactions
   }, [dashboardData])
 
   const txCards = useMemo(() => [...new Set(allTxns.map((t) => t.card))].sort(), [allTxns])
@@ -829,6 +1039,9 @@ export default function HomePage() {
       filtered = filtered.filter((t) =>
         t.description.toLowerCase().includes(txState.search.toLowerCase())
       )
+    }
+    if (txState.accountTypeFilter) {
+      filtered = filtered.filter((t) => (t.account_type || 'credit_card') === txState.accountTypeFilter)
     }
     if (txState.cardFilter) {
       filtered = filtered.filter((t) => t.card === txState.cardFilter)
@@ -937,9 +1150,9 @@ export default function HomePage() {
                 ← Back to Upload
               </button>
               <a href="#heroSection">Overview</a>
-              <a href="#sectionMonthly">Monthly</a>
-              <a href="#sectionCategory">Categories</a>
-              <a href="#sectionMerchants">Merchants</a>
+              <a href="#sectionMonthly">Cards</a>
+              {dashboardData?.savings && <a href="#sectionSavings">Savings</a>}
+              {dashboardData?.investments && <a href="#sectionInvestments">Investments</a>}
               <a href="#sectionInsights">Insights</a>
               <a href="#sectionTransactions">Transactions</a>
             </>
@@ -1006,6 +1219,16 @@ export default function HomePage() {
                 <div className="file-item" key={f.id}>
                   <span className={`file-type-badge ${f.type}`}>{f.type}</span>
                   <span className="file-name">{f.name}</span>
+                  <select
+                    className="account-type-select"
+                    value={f.accountType}
+                    onChange={(e) => handleAccountTypeChange(f.id, e.target.value as AccountType)}
+                    title="Account type — change if auto-detected incorrectly"
+                  >
+                    <option value="credit_card">💳 Credit Card</option>
+                    <option value="savings">🏦 Savings / Checking</option>
+                    <option value="investment">📈 Investment</option>
+                  </select>
                   {f.txCount > 0 && (
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                       {f.txCount} txns
@@ -1120,17 +1343,22 @@ export default function HomePage() {
               </div>
             </section>
 
-            {/* Monthly Spending Trends */}
+            {/* Monthly Spending Trends (Credit Cards) */}
             <section className="chart-section" id="sectionMonthly">
               <div className="section-header">
-                <h2 className="section-title">Monthly Spending Trends</h2>
+                <div>
+                  {(dashboardData.account_types || []).length > 1 && (
+                    <div className="section-account-label credit">💳 Credit Cards</div>
+                  )}
+                  <h2 className="section-title">Monthly Spending Trends</h2>
+                </div>
               </div>
               <div className="chart-card">
                 <canvas ref={chartRefs.chartMonthly} id="chartMonthly" />
               </div>
             </section>
 
-            {/* Spending by Category */}
+            {/* Spending by Category (Credit Cards) */}
             <section className="chart-section" id="sectionCategory">
               <div className="section-header">
                 <h2 className="section-title">Spending by Category</h2>
@@ -1193,6 +1421,89 @@ export default function HomePage() {
                 <canvas ref={chartRefs.chartBalance} id="chartBalance" />
               </div>
             </section>
+
+            {/* Savings Overview */}
+            {dashboardData.savings && (
+              <section className="chart-section" id="sectionSavings">
+                <div className="section-header">
+                  <div>
+                    <div className="section-account-label savings">🏦 Savings / Checking</div>
+                    <h2 className="section-title">Savings Overview</h2>
+                  </div>
+                </div>
+                <div className="kpi-grid-compact">
+                  <div className="kpi-card-compact">
+                    <div className="kpi-label">Total Deposits</div>
+                    <div className="kpi-value" style={{ color: 'var(--accent-green)' }}>
+                      ${dashboardData.savings.total_deposits.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </div>
+                    <div className="kpi-detail">{dashboardData.savings.accounts.join(' · ')}</div>
+                  </div>
+                  <div className="kpi-card-compact">
+                    <div className="kpi-label">Total Withdrawals</div>
+                    <div className="kpi-value" style={{ color: 'var(--accent-red)' }}>
+                      ${dashboardData.savings.total_withdrawals.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </div>
+                    <div className="kpi-detail">Excludes inter-account transfers</div>
+                  </div>
+                  <div className="kpi-card-compact">
+                    <div className="kpi-label">Net Cash Flow</div>
+                    <div className="kpi-value" style={{ color: dashboardData.savings.net_cash_flow >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                      {dashboardData.savings.net_cash_flow >= 0 ? '+' : ''}${dashboardData.savings.net_cash_flow.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </div>
+                    <div className="kpi-detail">Deposits minus withdrawals</div>
+                  </div>
+                  {dashboardData.savings.interest_earned > 0 && (
+                    <div className="kpi-card-compact">
+                      <div className="kpi-label">Interest Earned</div>
+                      <div className="kpi-value" style={{ color: 'var(--accent-teal)' }}>
+                        ${dashboardData.savings.interest_earned.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </div>
+                      <div className="kpi-detail">APY / savings interest</div>
+                    </div>
+                  )}
+                </div>
+                <div className="chart-card">
+                  <canvas ref={chartRefs.chartSavingsMonthly} id="chartSavingsMonthly" />
+                </div>
+                {dashboardData.savings.monthly.months.length > 0 && (
+                  <div className="chart-card" style={{ marginTop: 16 }}>
+                    <canvas ref={chartRefs.chartSavingsBalance} id="chartSavingsBalance" />
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* Investment Activity */}
+            {dashboardData.investments && (
+              <section className="chart-section" id="sectionInvestments">
+                <div className="section-header">
+                  <div>
+                    <div className="section-account-label investment">📈 Investments</div>
+                    <h2 className="section-title">Investment Activity</h2>
+                  </div>
+                </div>
+                <div className="kpi-grid-compact">
+                  <div className="kpi-card-compact">
+                    <div className="kpi-label">Total Contributions</div>
+                    <div className="kpi-value" style={{ color: 'var(--accent-orange)' }}>
+                      ${dashboardData.investments.total_contributions.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </div>
+                    <div className="kpi-detail">{dashboardData.investments.accounts.join(' · ')}</div>
+                  </div>
+                  <div className="kpi-card-compact">
+                    <div className="kpi-label">Dividends Received</div>
+                    <div className="kpi-value" style={{ color: 'var(--accent-blue)' }}>
+                      ${dashboardData.investments.total_dividends.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </div>
+                    <div className="kpi-detail">Distributions & dividends</div>
+                  </div>
+                </div>
+                <div className="chart-card">
+                  <canvas ref={chartRefs.chartInvestmentsMonthly} id="chartInvestmentsMonthly" />
+                </div>
+              </section>
+            )}
 
             {/* Day-of-Week Spending */}
             <section className="chart-section" id="sectionDow">
@@ -1259,6 +1570,20 @@ export default function HomePage() {
                     setTxState((prev) => ({ ...prev, search: e.target.value, page: 1 }))
                   }
                 />
+                {(dashboardData.account_types || []).length > 1 && (
+                  <select
+                    className="tx-filter"
+                    value={txState.accountTypeFilter}
+                    onChange={(e) =>
+                      setTxState((prev) => ({ ...prev, accountTypeFilter: e.target.value, cardFilter: '', page: 1 }))
+                    }
+                  >
+                    <option value="">All Accounts</option>
+                    <option value="credit_card">💳 Credit Cards</option>
+                    <option value="savings">🏦 Savings</option>
+                    <option value="investment">📈 Investments</option>
+                  </select>
+                )}
                 <select
                   id="txCardFilter"
                   className="tx-filter"
@@ -1394,7 +1719,12 @@ export default function HomePage() {
                       </tr>
                     ) : (
                       pagedTxns.map((t, idx) => {
-                        const cardClass = t.card.toLowerCase().includes('chase')
+                        const acctType = t.account_type || 'credit_card'
+                        const cardClass = acctType === 'savings'
+                          ? 'savings'
+                          : acctType === 'investment'
+                          ? 'investment'
+                          : t.card.toLowerCase().includes('chase')
                           ? 'chase'
                           : t.card.toLowerCase().includes('apple')
                           ? 'apple'
@@ -1405,7 +1735,7 @@ export default function HomePage() {
                             <td>{formatDate(t.date)}</td>
                             <td>{truncate(t.description, 45)}</td>
                             <td className={`amount-cell ${amountClass}`}>
-                              ${Math.abs(t.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              {t.amount < 0 ? '-' : '+'}${Math.abs(t.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </td>
                             <td>
                               <span className={`card-badge ${cardClass}`}>{t.card}</span>

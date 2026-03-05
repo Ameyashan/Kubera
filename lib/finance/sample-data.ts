@@ -76,6 +76,7 @@ export function generateSampleData(): ParsedTransaction[] {
         amount: -Math.round(randRange(lo, hi) * 100) / 100,
         card: pick(cards),
         category: "Subscriptions & Software",
+        account_type: "credit_card",
       })
     }
 
@@ -88,33 +89,33 @@ export function generateSampleData(): ParsedTransaction[] {
       // Transit on weekdays
       if (dow >= 1 && dow <= 5 && random() < 0.8) {
         const [name, lo, hi] = pick(merchants["Public Transit"])
-        transactions.push({ date, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: "Apple Card", category: "Public Transit" })
+        transactions.push({ date, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: "Apple Card", category: "Public Transit", account_type: "credit_card" })
       }
 
       // Dining
       const diningChance = (dow === 0 || dow === 6) ? 0.6 : 0.35
       if (random() < diningChance) {
         const [name, lo, hi] = pick(merchants["Dining & Restaurants"])
-        transactions.push({ date, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: pick(cards), category: "Dining & Restaurants" })
+        transactions.push({ date, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: pick(cards), category: "Dining & Restaurants", account_type: "credit_card" })
       }
 
       // Coffee
       if (random() < 0.4) {
         const coffeeSpots: Array<[string, number, number]> = [["Starbucks Coffee", 4, 7], ["Blue Bottle Coffee", 5, 8], ["Dunkin Donuts", 3, 6]]
         const [name, lo, hi] = pick(coffeeSpots)
-        transactions.push({ date, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: "Apple Card", category: "Dining & Restaurants" })
+        transactions.push({ date, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: "Apple Card", category: "Dining & Restaurants", account_type: "credit_card" })
       }
 
       // Food delivery
       if (random() < 0.15) {
         const [name, lo, hi] = pick(merchants["Food Delivery"])
-        transactions.push({ date, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: pick(cards), category: "Food Delivery" })
+        transactions.push({ date, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: pick(cards), category: "Food Delivery", account_type: "credit_card" })
       }
 
       // Ride-sharing
       if (((dow === 0 || dow === 6) && random() < 0.3) || random() < 0.08) {
         const [name, lo, hi] = pick(merchants["Ride-sharing & Taxis"])
-        transactions.push({ date, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: pick(cards), category: "Ride-sharing & Taxis" })
+        transactions.push({ date, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: pick(cards), category: "Ride-sharing & Taxis", account_type: "credit_card" })
       }
     }
 
@@ -122,35 +123,35 @@ export function generateSampleData(): ParsedTransaction[] {
     for (let j = 0; j < Math.floor(random() * 3) + 3; j++) {
       const day = Math.floor(random() * Math.min(dim, 28)) + 1
       const [name, lo, hi] = pick(merchants["Groceries"])
-      transactions.push({ date: `${year}-${pad(month)}-${pad(day)}`, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: "Chase Sapphire", category: "Groceries" })
+      transactions.push({ date: `${year}-${pad(month)}-${pad(day)}`, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: "Chase Sapphire", category: "Groceries", account_type: "credit_card" })
     }
 
     // Shopping (2-4 per month)
     for (let j = 0; j < Math.floor(random() * 3) + 2; j++) {
       const day = Math.floor(random() * Math.min(dim, 28)) + 1
       const [name, lo, hi] = pick(merchants["Shopping"])
-      transactions.push({ date: `${year}-${pad(month)}-${pad(day)}`, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: pick(cards), category: "Shopping" })
+      transactions.push({ date: `${year}-${pad(month)}-${pad(day)}`, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: pick(cards), category: "Shopping", account_type: "credit_card" })
     }
 
     // Entertainment (0-2)
     for (let j = 0; j < Math.floor(random() * 3); j++) {
       const day = Math.floor(random() * Math.min(dim, 28)) + 1
       const [name, lo, hi] = pick(merchants["Entertainment"])
-      transactions.push({ date: `${year}-${pad(month)}-${pad(day)}`, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: pick(cards), category: "Entertainment" })
+      transactions.push({ date: `${year}-${pad(month)}-${pad(day)}`, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: pick(cards), category: "Entertainment", account_type: "credit_card" })
     }
 
     // Health (1-2)
     for (let j = 0; j < Math.floor(random() * 2) + 1; j++) {
       const day = Math.floor(random() * Math.min(dim, 28)) + 1
       const [name, lo, hi] = pick(merchants["Health & Pharmacy"])
-      transactions.push({ date: `${year}-${pad(month)}-${pad(day)}`, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: pick(cards), category: "Health & Pharmacy" })
+      transactions.push({ date: `${year}-${pad(month)}-${pad(day)}`, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: pick(cards), category: "Health & Pharmacy", account_type: "credit_card" })
     }
 
     // Travel (occasional)
     if (random() < 0.25) {
       const day = Math.floor(random() * Math.min(dim, 28)) + 1
       const [name, lo, hi] = pick(merchants["Travel"])
-      transactions.push({ date: `${year}-${pad(month)}-${pad(day)}`, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: "Chase Sapphire", category: "Travel" })
+      transactions.push({ date: `${year}-${pad(month)}-${pad(day)}`, description: name, amount: -Math.round(randRange(lo, hi) * 100) / 100, card: "Chase Sapphire", category: "Travel", account_type: "credit_card" })
     }
 
     // Interest charges (60% chance)
@@ -163,6 +164,7 @@ export function generateSampleData(): ParsedTransaction[] {
           amount: -Math.round(randRange(15, 65) * 100) / 100,
           card: cardName,
           category: "Other",
+          account_type: "credit_card",
         })
       }
     }

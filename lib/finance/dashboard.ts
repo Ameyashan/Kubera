@@ -1,3 +1,5 @@
+import type { AccountType } from './parsers'
+
 export interface Transaction {
   id?: number
   date: string
@@ -5,10 +7,37 @@ export interface Transaction {
   amount: number
   card: string
   category: string
+  account_type: AccountType
+}
+
+export interface SavingsSummary {
+  accounts: string[]
+  total_deposits: number
+  total_withdrawals: number
+  net_cash_flow: number
+  interest_earned: number
+  monthly: {
+    months: string[]
+    deposits: Record<string, number>
+    withdrawals: Record<string, number>
+  }
+  balance: Record<string, Record<string, number>>
+}
+
+export interface InvestmentSummary {
+  accounts: string[]
+  total_contributions: number
+  total_dividends: number
+  monthly: {
+    months: string[]
+    contributions: Record<string, number>
+    dividends: Record<string, number>
+  }
 }
 
 export interface DashboardPayload {
   status: string
+  account_types: string[]
   summary: {
     total_spend: number
     total_income: number
@@ -40,11 +69,26 @@ export interface DashboardPayload {
   insights: Array<{ title: string; value: string; detail: string; icon: string }>
   tips: Array<{ emoji: string; title: string; text: string; color: string }>
   transactions: Transaction[]
+  savings: SavingsSummary | null
+  investments: InvestmentSummary | null
 }
 
 export function buildDashboardPayload(transactions: Transaction[]): DashboardPayload {
-  const spending = transactions.filter(t => t.amount < 0)
-  const income = transactions.filter(t => t.amount > 0)
+  // Identify which account types are present
+  const accountTypes = [...new Set(transactions.map(t => t.account_type || 'credit_card'))]
+  const hasMixed = accountTypes.length > 1
+
+  // Separate by account type
+  const ccTransactions = hasMixed
+    ? transactions.filter(t => (t.account_type || 'credit_card') === 'credit_card')
+    : transactions
+  const savingsTxns = transactions.filter(t => (t.account_type || 'credit_card') === 'savings')
+  const investmentTxns = transactions.filter(t => (t.account_type || 'credit_card') === 'investment')
+
+  // For spending/income, use credit card transactions (or all if single type)
+  // Exclude transfers from spending calculations
+  const spending = ccTransactions.filter(t => t.amount < 0 && t.category !== 'Transfer')
+  const income = ccTransactions.filter(t => t.amount > 0)
 
   const totalSpend = spending.reduce((sum, t) => sum + Math.abs(t.amount), 0)
   const totalIncome = income.reduce((sum, t) => sum + t.amount, 0)
@@ -67,7 +111,7 @@ export function buildDashboardPayload(transactions: Transaction[]): DashboardPay
   }
   const dailyAvg = totalSpend / numDays
 
-  // Card totals
+  // Card totals (credit cards)
   const cards = new Set(spending.map(t => t.card))
   const cardTotals: Record<string, number> = {}
   cards.forEach(c => {
@@ -96,7 +140,6 @@ export function buildDashboardPayload(transactions: Transaction[]): DashboardPay
 
   const sortedMonths = Array.from(monthsSet).sort()
 
-  // Round monthly values
   for (const card of Object.keys(monthlyByCard)) {
     for (const m of Object.keys(monthlyByCard[card])) {
       monthlyByCard[card][m] = Math.round(monthlyByCard[card][m] * 100) / 100
@@ -142,7 +185,6 @@ export function buildDashboardPayload(transactions: Transaction[]): DashboardPay
     dowSpend[dow] = (dowSpend[dow] || 0) + Math.abs(t.amount)
     dowCount[dow] = (dowCount[dow] || 0) + 1
   })
-  // Reorder: Mon-Sun
   const dowOrder = [1, 2, 3, 4, 5, 6, 0]
   const dowData = dowOrder.map(i => ({
     day: dayNames[i],
@@ -166,11 +208,11 @@ export function buildDashboardPayload(transactions: Transaction[]): DashboardPay
     }
   })
 
-  // Balance tracker
+  // Balance tracker (credit cards only)
   const balanceByCard: Record<string, Record<string, number>> = {}
-  const allCards = new Set(transactions.map(t => t.card))
-  allCards.forEach(c => { balanceByCard[c] = {} })
-  transactions.forEach(t => {
+  const allCcCards = new Set(ccTransactions.map(t => t.card))
+  allCcCards.forEach(c => { balanceByCard[c] = {} })
+  ccTransactions.forEach(t => {
     if (!t.date) return
     const m = t.date.substring(0, 7)
     if (!balanceByCard[t.card]) balanceByCard[t.card] = {}
@@ -196,14 +238,18 @@ export function buildDashboardPayload(transactions: Transaction[]): DashboardPay
     { title: "Biggest Transaction", value: biggestTxn ? `$${Math.abs(biggestTxn.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "N/A", detail: biggestTxn ? biggestTxn.description.substring(0, 40) : "", icon: "💰" },
     { title: "Most Frequent Merchant", value: `${mostFreq[1]} visits`, detail: String(mostFreq[0]).substring(0, 30), icon: "🔄" },
     { title: "Weekend vs Weekday", value: `$${weekendSpend.toLocaleString(undefined, { minimumFractionDigits: 0 })} / $${weekdaySpend.toLocaleString(undefined, { minimumFractionDigits: 0 })}`, detail: `Weekend avg $${Math.round(weekendSpend / Math.max((dowCount[0] || 0) + (dowCount[6] || 0), 1))}/day`, icon: "📅" },
-    { title: "Dining Share", value: `${diningShare}%`, detail: "of total spending on food & delivery", icon: "🍽️" },
+    { title: "Dining Share", value: `${diningShare}%`, detail: "of total credit card spending on food & delivery", icon: "🍽️" },
   ]
 
-  // Tips
   const tips = generateTips(sortedCatTotals, totalSpend, diningShare, totalInterest, monthlyAvg, weekendSpend, weekdaySpend)
+
+  // Savings and investment summaries
+  const savings = savingsTxns.length > 0 ? buildSavingsSummary(savingsTxns) : null
+  const investments = investmentTxns.length > 0 ? buildInvestmentSummary(investmentTxns) : null
 
   return {
     status: "ready",
+    account_types: accountTypes,
     summary: {
       total_spend: Math.round(totalSpend * 100) / 100,
       total_income: Math.round(totalIncome * 100) / 100,
@@ -235,6 +281,93 @@ export function buildDashboardPayload(transactions: Transaction[]): DashboardPay
     insights,
     tips,
     transactions,
+    savings,
+    investments,
+  }
+}
+
+function buildSavingsSummary(txns: Transaction[]): SavingsSummary {
+  const accounts = [...new Set(txns.map(t => t.card))]
+  // Exclude transfers from deposits/withdrawals
+  const nonTransfers = txns.filter(t => t.category !== 'Transfer')
+  const deposits = nonTransfers.filter(t => t.amount > 0)
+  const withdrawals = nonTransfers.filter(t => t.amount < 0)
+  const interestTxns = deposits.filter(t =>
+    ['interest', 'dividend', 'apy'].some(k => t.description.toLowerCase().includes(k))
+  )
+
+  const totalDeposits = Math.round(deposits.reduce((s, t) => s + t.amount, 0) * 100) / 100
+  const totalWithdrawals = Math.round(withdrawals.reduce((s, t) => s + Math.abs(t.amount), 0) * 100) / 100
+  const interestEarned = Math.round(interestTxns.reduce((s, t) => s + t.amount, 0) * 100) / 100
+
+  const monthsSet = new Set<string>()
+  txns.forEach(t => { if (t.date) monthsSet.add(t.date.substring(0, 7)) })
+  const months = Array.from(monthsSet).sort()
+
+  const monthlyDeposits: Record<string, number> = {}
+  const monthlyWithdrawals: Record<string, number> = {}
+  deposits.forEach(t => {
+    if (!t.date) return
+    const m = t.date.substring(0, 7)
+    monthlyDeposits[m] = Math.round(((monthlyDeposits[m] || 0) + t.amount) * 100) / 100
+  })
+  withdrawals.forEach(t => {
+    if (!t.date) return
+    const m = t.date.substring(0, 7)
+    monthlyWithdrawals[m] = Math.round(((monthlyWithdrawals[m] || 0) + Math.abs(t.amount)) * 100) / 100
+  })
+
+  const balanceByAccount: Record<string, Record<string, number>> = {}
+  accounts.forEach(a => { balanceByAccount[a] = {} })
+  txns.forEach(t => {
+    if (!t.date) return
+    const m = t.date.substring(0, 7)
+    if (!balanceByAccount[t.card]) balanceByAccount[t.card] = {}
+    balanceByAccount[t.card][m] = Math.round(((balanceByAccount[t.card][m] || 0) + t.amount) * 100) / 100
+  })
+
+  return {
+    accounts,
+    total_deposits: totalDeposits,
+    total_withdrawals: totalWithdrawals,
+    net_cash_flow: Math.round((totalDeposits - totalWithdrawals) * 100) / 100,
+    interest_earned: interestEarned,
+    monthly: { months, deposits: monthlyDeposits, withdrawals: monthlyWithdrawals },
+    balance: balanceByAccount,
+  }
+}
+
+function buildInvestmentSummary(txns: Transaction[]): InvestmentSummary {
+  const accounts = [...new Set(txns.map(t => t.card))]
+  // Positive = dividends/distributions received; Negative = contributions/purchases
+  const dividends = txns.filter(t => t.amount > 0)
+  const contributions = txns.filter(t => t.amount < 0)
+
+  const totalContributions = Math.round(contributions.reduce((s, t) => s + Math.abs(t.amount), 0) * 100) / 100
+  const totalDividends = Math.round(dividends.reduce((s, t) => s + t.amount, 0) * 100) / 100
+
+  const monthsSet = new Set<string>()
+  txns.forEach(t => { if (t.date) monthsSet.add(t.date.substring(0, 7)) })
+  const months = Array.from(monthsSet).sort()
+
+  const monthlyContributions: Record<string, number> = {}
+  const monthlyDividends: Record<string, number> = {}
+  contributions.forEach(t => {
+    if (!t.date) return
+    const m = t.date.substring(0, 7)
+    monthlyContributions[m] = Math.round(((monthlyContributions[m] || 0) + Math.abs(t.amount)) * 100) / 100
+  })
+  dividends.forEach(t => {
+    if (!t.date) return
+    const m = t.date.substring(0, 7)
+    monthlyDividends[m] = Math.round(((monthlyDividends[m] || 0) + t.amount) * 100) / 100
+  })
+
+  return {
+    accounts,
+    total_contributions: totalContributions,
+    total_dividends: totalDividends,
+    monthly: { months, contributions: monthlyContributions, dividends: monthlyDividends },
   }
 }
 

@@ -1,11 +1,28 @@
 import { categorize } from './categorize'
 
+export type AccountType = 'credit_card' | 'savings' | 'investment'
+
 export interface ParsedTransaction {
   date: string
   description: string
   amount: number
   card: string
   category: string
+  account_type: AccountType
+}
+
+export function detectAccountType(filename: string): AccountType {
+  const lower = filename.toLowerCase()
+  const investmentKeywords = [
+    'fidelity', 'vanguard', 'schwab', 'etrade', 'e-trade', 'robinhood',
+    'wealthfront', 'betterment', 'investment', 'brokerage', '401k', 'ira', 'roth',
+    'portfolio', 'stock', 'fund', 'equity',
+  ]
+  const savingsKeywords = ['savings', 'checking', 'money market']
+
+  if (investmentKeywords.some((k) => lower.includes(k))) return 'investment'
+  if (savingsKeywords.some((k) => lower.includes(k))) return 'savings'
+  return 'credit_card'
 }
 
 const DATE_FORMATS = [
@@ -99,6 +116,7 @@ export function parseCsv(text: string, filename: string): ParsedTransaction[] {
   }
 
   const cardName = filename.replace(/\.(csv|CSV)$/, '').replace(/[_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  const accountType = detectAccountType(filename)
 
   for (let i = 1; i < lines.length; i++) {
     try {
@@ -135,6 +153,7 @@ export function parseCsv(text: string, filename: string): ParsedTransaction[] {
         amount: Math.round(amount * 100) / 100,
         card: cardName,
         category: categorize(desc),
+        account_type: accountType,
       })
     } catch {
       continue
@@ -147,6 +166,7 @@ export function parseCsv(text: string, filename: string): ParsedTransaction[] {
 export function parsePdfText(text: string, filename: string): ParsedTransaction[] {
   const transactions: ParsedTransaction[] = []
   const cardName = filename.replace(/\.(pdf|PDF)$/, '').replace(/[_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  const accountType = detectAccountType(filename)
 
   // Match lines: date [optional post date] description amount
   const pattern = /(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s+(?:\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s+)?(.+?)\s+(-?\$?[\d,]+\.\d{2})\s*$/gm
@@ -169,6 +189,7 @@ export function parsePdfText(text: string, filename: string): ParsedTransaction[
       amount: Math.round(amount * 100) / 100,
       card: cardName,
       category: categorize(desc),
+      account_type: accountType,
     })
   }
 

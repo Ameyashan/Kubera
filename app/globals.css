@@ -767,6 +767,56 @@ a:hover { text-decoration: underline; }
 .card-badge.chase { background: rgba(79,143,247,0.15); color: var(--accent-blue); }
 .card-badge.apple { background: rgba(167,139,250,0.15); color: var(--accent-purple); }
 .card-badge.default-card { background: rgba(156,163,180,0.15); color: var(--text-secondary); }
+.card-badge.savings { background: rgba(52,211,153,0.15); color: var(--accent-green); }
+.card-badge.investment { background: rgba(251,191,36,0.15); color: var(--accent-orange); }
+
+/* Account type selector in upload file list */
+.account-type-select {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+.account-type-select:hover { border-color: var(--accent-blue); color: var(--text-primary); }
+.account-type-select:focus { outline: none; border-color: var(--accent-blue); }
+
+/* Account type section headers */
+.section-account-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 20px;
+  margin-bottom: 4px;
+}
+.section-account-label.credit { background: rgba(79,143,247,0.12); color: var(--accent-blue); }
+.section-account-label.savings { background: rgba(52,211,153,0.12); color: var(--accent-green); }
+.section-account-label.investment { background: rgba(251,191,36,0.12); color: var(--accent-orange); }
+
+/* Savings/Investment KPI row */
+.kpi-grid-compact {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.kpi-card-compact {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+}
+.kpi-card-compact .kpi-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.kpi-card-compact .kpi-value { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); }
+.kpi-card-compact .kpi-detail { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
 
 .category-badge {
   display: inline-block;
